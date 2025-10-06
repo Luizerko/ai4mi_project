@@ -103,6 +103,7 @@ def setup(args) -> tuple[nn.Module, Any, Any, DataLoader, DataLoader, int]:
                              root_dir,
                              img_transform=img_transform,
                              gt_transform= partial(gt_transform, K),
+                             augment=args.augment,
                              debug=args.debug)
     train_loader = DataLoader(train_set,
                               batch_size=B,
@@ -245,6 +246,8 @@ def main():
     parser.add_argument('--debug', action='store_true',
                         help="Keep only a fraction (10 samples) of the datasets, "
                              "to test the logics around epochs and logging easily.")
+    parser.add_argument('--augment', action='store_true',
+                        help="Use online data augmentation")
 
     args = parser.parse_args()
 

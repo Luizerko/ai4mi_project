@@ -1,0 +1,23 @@
+#!/bin/bash
+
+#SBATCH --partition=gpu_a100
+#SBATCH --gpus=1
+#SBATCH --job-name=run_baseline_segthor
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=18
+#SBATCH --time=01:00:00
+#SBATCH --output=jobs/results/baseline/slurm_output_%A.out
+
+cd $HOME/scur1645/group_project/ai4mi_project
+# Activate the environment
+source /home/scur1645/ai4mi_project/ai4mi/bin/activate
+
+# Check whether the GPU is available
+# srun python -uc "import torch; print('GPU available?', torch.cuda.is_available())"
+
+# Run full training on SEGTHOR_CLEAN
+srun python -O main.py --dataset SEGTHOR_CLEAN --mode full --epochs 25 --dest results/segthor_baseline --gpu
+
+# Run test on toy2
+#srun python main.py --dataset TOY2 --mode full --epochs 2 --dest results/toy2/test --gpu
+

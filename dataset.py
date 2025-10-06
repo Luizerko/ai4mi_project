@@ -24,10 +24,15 @@
 
 from pathlib import Path
 from typing import Callable, Union
+import random
 
 from torch import Tensor
 from PIL import Image
 from torch.utils.data import Dataset
+import torchvision.transforms.functional as tf
+import torch
+
+
 
 
 def make_dataset(root, subset) -> list[tuple[Path, Path | None]]:
@@ -57,8 +62,11 @@ class SliceDataset(Dataset):
         self.gt_transform: Callable = gt_transform
         self.augmentation: bool = augment
         self.equalize: bool = equalize
-
+        
         self.test_mode: bool = subset == 'test'
+        # store train_mode for augmentation
+        self.train_mode: bool = subset == 'train'
+
 
         self.files = make_dataset(root_dir, subset)
         if debug:
@@ -83,6 +91,24 @@ class SliceDataset(Dataset):
             _, W, H = img.shape
             K, _, _ = gt.shape
             assert gt.shape == (K, W, H)
+
+            # Online data augmentation
+            if self.train_mode and self.augmentation:
+                # Random horizontal flip
+                if random.random() < 0.5:
+                    img = torch.flip(img, dims=[2])
+                    gt = torch.flip(gt, dims=[2])
+
+                # Random rotation (small)
+                if random.random() < 0.5:
+                    angle = random.uniform(-15, 15)
+                    img = tf.rotate(img, angle, interpolation=tf.InterpolationMode.BILINEAR)
+                    gt = tf.rotate(gt.float(), angle, interpolation=tf.InterpolationMode.NEAREST).long()
+
+                # Random brightness/contrast (only for image)
+                if random.random() < 0.3:
+                    img = tf.adjust_brightness(img, random.uniform(0.9, 1.1))
+                    img = tf.adjust_contrast(img, random.uniform(0.9, 1.1))
 
             data_dict["gts"] = gt
 
