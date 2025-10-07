@@ -61,11 +61,11 @@ class FocalLoss():
         assert simplex(pred_softmax)
         assert sset(weak_target, [0, 1])
 
-        
+        print("dice: {}".format(dice))
         dice = torch.mean(dice, dim = 0)
         self.alpha = dice.mean()/dice
         print(self.alpha)
-        self.alpha = self.alpha.view(1, -1)
+        self.alpha = self.alpha.view(1, -1, 1, 1)
         print(self.alpha)
 
         p = pred_softmax[:, self.idk, ...]

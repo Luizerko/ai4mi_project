@@ -193,7 +193,7 @@ def runTraining(args):
                     pred_seg = probs2one_hot(pred_probs)
                     log_dice[e, j:j + B, :] = dice_coef(pred_seg, gt)  # One DSC value per sample and per class
 
-                    loss = loss_fn(pred_probs, gt, log_dice[e, :j])
+                    loss = loss_fn(pred_probs, gt, log_dice[e, j:j+B])
                     log_loss[e, i] = loss.item()  # One loss value per batch (averaged in the loss)
 
                     if opt:  # Only for training
