@@ -254,6 +254,7 @@ def main():
     parser.add_argument('--debug', action='store_true',
                         help="Keep only a fraction (10 samples) of the datasets, "
                              "to test the logics around epochs and logging easily.")
+    parser.add_argument('--loss', type=str, default="ce", help="Choose loss from: 'ce', 'focal'.")
 
     args = parser.parse_args()
 
