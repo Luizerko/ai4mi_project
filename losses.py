@@ -66,9 +66,11 @@ class FocalLoss():
 
         self.alpha = 1 # TODO: implement
 
-        log_p = (pred_softmax[:, self.idk, ...] + 1e-10).log() 
-        print(log_p.shape)
-        log_p = self.alpha * log_p * ((1-log_p)**self.gamma)
+        p = pred_softmax[:, self.idk, ...]
+        log_p = (p + 1e-10).log() 
+        print(log_p)
+        print(p.shape)
+        log_p = self.alpha * log_p * ((1-p)**self.gamma)
         mask = weak_target[:, self.idk, ...].float()
 
         loss = - einsum("bkwh,bkwh->", mask, log_p)
