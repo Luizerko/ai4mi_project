@@ -34,12 +34,41 @@ class CrossEntropy():
         self.idk = kwargs['idk']
         print(f"Initialized {self.__class__.__name__} with {kwargs}")
 
-    def __call__(self, pred_softmax, weak_target):
+    def __call__(self, pred_softmax, weak_target, dice):
         assert pred_softmax.shape == weak_target.shape
         assert simplex(pred_softmax)
         assert sset(weak_target, [0, 1])
 
         log_p = (pred_softmax[:, self.idk, ...] + 1e-10).log()
+        mask = weak_target[:, self.idk, ...].float()
+
+        loss = - einsum("bkwh,bkwh->", mask, log_p)
+        loss /= mask.sum() + 1e-10
+
+        return loss
+    
+# Highlights smaller classes.
+class FocalLoss():
+    def __init__(self, **kwargs):
+        # Self.idk is used to filter out some classes of the target mask. Use fancy indexing
+        self.idk = kwargs['idk']
+        self.alpha = [1,1,1,1,1] # TODO: find per class weights -> organ sizes?
+        self.gamma = 2
+        print(f"Initialized {self.__class__.__name__} with {kwargs}")
+
+    def __call__(self, pred_softmax, weak_target, dice):
+        assert pred_softmax.shape == weak_target.shape
+        assert simplex(pred_softmax)
+        assert sset(weak_target, [0, 1])
+
+        print(dice.shape)
+        # print()
+
+        self.alpha = 1 # TODO: implement
+
+        log_p = (pred_softmax[:, self.idk, ...] + 1e-10).log() 
+        print(log_p.shape)
+        log_p = self.alpha * log_p * ((1-log_p)**self.gamma)
         mask = weak_target[:, self.idk, ...].float()
 
         loss = - einsum("bkwh,bkwh->", mask, log_p)
