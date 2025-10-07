@@ -50,7 +50,7 @@ from utils import (Dcm,
                    dice_coef,
                    save_images)
 
-from losses import (CrossEntropy)
+from losses import (CrossEntropy, CEWithTV)
 
 datasets_params: dict[str, dict[str, Any]] = {}
 # K for the number of classes
@@ -130,8 +130,10 @@ def runTraining(args):
 
     if args.mode == "full":
         loss_fn = CrossEntropy(idk=list(range(K)))  # Supervise both background and foreground
-    elif args.mode in ["partial"] and args.dataset == 'SEGTHOR':
-        loss_fn = CrossEntropy(idk=[0, 1, 3, 4])  # Do not supervise the heart (class 2)
+    elif args.mode in ["partial"]:
+        loss_fn = CrossEntropy(idk=[1, 2, 3, 4])  # Do not supervise the background
+    elif args.mode == "tv":
+        loss_fn = CEWithTV(lam_tv=1e-3, num_classes=K)  # Full CE + TV on foreground
     else:
         raise ValueError(args.mode, args.dataset)
 
@@ -237,7 +239,7 @@ def main():
 
     parser.add_argument('--epochs', default=20, type=int)
     parser.add_argument('--dataset', default='TOY2', choices=datasets_params.keys())
-    parser.add_argument('--mode', default='full', choices=['partial', 'full'])
+    parser.add_argument('--mode', default='full', choices=['partial', 'full', 'tv'])
     parser.add_argument('--dest', type=Path, required=True,
                         help="Destination directory to save the results (predictions and weights).")
 
