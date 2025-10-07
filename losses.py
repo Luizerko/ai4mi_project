@@ -22,7 +22,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-
+import torch
 from torch import einsum
 
 from utils import simplex, sset
@@ -61,10 +61,12 @@ class FocalLoss():
         assert simplex(pred_softmax)
         assert sset(weak_target, [0, 1])
 
-        print(dice.shape)
-        # print()
-
-        self.alpha = 1 # TODO: implement
+        
+        dice = torch.mean(dice, dim = 0)
+        self.alpha = dice/dice.mean()
+        print(self.alpha)
+        self.alpha = self.alpha.view(1, -1)
+        print(self.alpha)
 
         p = pred_softmax[:, self.idk, ...]
         log_p = (p + 1e-10).log() 
