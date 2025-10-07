@@ -29,6 +29,7 @@ from pathlib import Path
 from pprint import pprint
 from operator import itemgetter
 from shutil import copytree, rmtree
+from datetime import datetime
 
 import torch
 import numpy as np
@@ -120,7 +121,11 @@ def setup(args) -> tuple[nn.Module, Any, Any, DataLoader, DataLoader, int]:
                             num_workers=5,
                             shuffle=False)
 
-    args.dest.mkdir(parents=True, exist_ok=True)
+    # Add timestamp to avoid overwriting results
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    args.dest = args.dest / f"run_{timestamp}"
+    args.dest.mkdir(parents=True, exist_ok=False)
+    print(f">>> Saving results to: {args.dest}")
 
     return (net, optimizer, device, train_loader, val_loader, K)
 
