@@ -56,17 +56,17 @@ def make_dataset(root, subset) -> list[tuple[Path, Path | None]]:
 
 class SliceDataset(Dataset):
     def __init__(self, subset, root_dir, img_transform=None,
-                 gt_transform=None, augment=False, equalize=False, debug=False):
+                 gt_transform=None, augment=[], equalize=False, debug=False):
         self.root_dir: str = root_dir
         self.img_transform: Callable = img_transform
         self.gt_transform: Callable = gt_transform
-        self.augmentation: bool = augment
+        self.augmentation: list[str] = augment
         self.equalize: bool = equalize
         
         self.test_mode: bool = subset == 'test'
+
         # store train_mode for augmentation
         self.train_mode: bool = subset == 'train'
-
 
         self.files = make_dataset(root_dir, subset)
         if debug:
@@ -93,22 +93,26 @@ class SliceDataset(Dataset):
             assert gt.shape == (K, W, H)
 
             # Online data augmentation
-            if self.train_mode and self.augmentation:
+            if self.train_mode:
                 # Random horizontal flip
-                if random.random() < 0.5:
+                if "flip" in self.augmentation and random.random() < 0.5:
                     img = torch.flip(img, dims=[2])
                     gt = torch.flip(gt, dims=[2])
 
-                # Random rotation (small)
-                if random.random() < 0.5:
+                # Random rotation
+                if "rotate" in self.augmentation and random.random() < 0.5:
                     angle = random.uniform(-15, 15)
                     img = tf.rotate(img, angle, interpolation=tf.InterpolationMode.BILINEAR)
                     gt = tf.rotate(gt.float(), angle, interpolation=tf.InterpolationMode.NEAREST).long()
 
-                # Random brightness/contrast (only for image)
-                if random.random() < 0.3:
+                # Brightness adjustment
+                if "brightness" in self.augmentation and random.random() < 0.3:
                     img = tf.adjust_brightness(img, random.uniform(0.9, 1.1))
+
+                # Contrast adjustment
+                if "contrast" in self.augmentation and random.random() < 0.3:
                     img = tf.adjust_contrast(img, random.uniform(0.9, 1.1))
+
 
             data_dict["gts"] = gt
 

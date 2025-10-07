@@ -251,8 +251,12 @@ def main():
     parser.add_argument('--debug', action='store_true',
                         help="Keep only a fraction (10 samples) of the datasets, "
                              "to test the logics around epochs and logging easily.")
-    parser.add_argument('--augment', action='store_true',
-                        help="Use online data augmentation")
+    parser.add_argument(
+        '--augment',
+        nargs='*',             # accepts multiple values (space-separated list)
+        default=[],            # default: no augmentations
+        help="List of augmentations to apply (options: flip, rotate, brightness, contrast)"
+    )
 
     args = parser.parse_args()
 
