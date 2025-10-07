@@ -16,5 +16,7 @@ source /home/scur1645/ai4mi_project/ai4mi/bin/activate
 # srun python -uc "import torch; print('GPU available?', torch.cuda.is_available())"
 
 # Run full training on SEGTHOR_CLEAN
+#srun python -O main.py --dataset SEGTHOR_CLEAN --mode full --epochs 25 --dest results/segthor_augmented_debug --gpu --augment  --debug 
+
 srun python -O main.py --dataset SEGTHOR_CLEAN --mode full --epochs 50 --dest results/segthor_augmented --gpu --augment
 
