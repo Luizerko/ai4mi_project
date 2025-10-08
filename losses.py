@@ -71,10 +71,10 @@ class FocalLoss():
         ce_loss /= mask.sum() + 1e-10
 
 
-        # dice = torch.mean(dice, dim = 0)
-        # self.alpha = dice.mean()/dice
-        # self.alpha = self.alpha.view(1, -1, 1, 1)
-        self.alpha = 1
+        dice = torch.mean(dice, dim = 0)
+        self.alpha = dice.mean()/dice
+        self.alpha = self.alpha.view(1, -1, 1, 1)
+        # self.alpha = 1
 
         p_t = ce_loss.exp()
 
