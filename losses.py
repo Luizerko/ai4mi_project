@@ -80,11 +80,11 @@ class FocalLoss():
 
         focal_weight = self.alpha * ((1-p_t)**self.gamma)
 
-        loss = ce_loss * focal_weight
+        loss = einsum("bk,bk->", ce_loss, focal_weight)
 
 
 
-        return loss.sum()
+        return loss
 
 
 class PartialCrossEntropy(CrossEntropy):
