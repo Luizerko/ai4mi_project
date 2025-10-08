@@ -61,21 +61,30 @@ class FocalLoss():
         assert simplex(pred_softmax)
         assert sset(weak_target, [0, 1])
 
-        
-        dice = torch.mean(dice, dim = 0)
-        self.alpha = dice.mean()/dice
-        self.alpha = self.alpha.view(1, -1, 1, 1)
-
         p = pred_softmax[:, self.idk, ...]
         log_p = (p + 1e-10).log() 
         
-        log_p = self.alpha * log_p * ((1-p)**self.gamma)
+        # log_p = self.alpha * log_p * ((1-p)**self.gamma)
         mask = weak_target[:, self.idk, ...].float()
 
-        loss = - einsum("bkwh,bkwh->", mask, log_p)
-        loss /= mask.sum() + 1e-10
+        ce_loss = - einsum("bkwh,bkwh->bk", mask, log_p)
+        ce_loss /= mask.sum() + 1e-10
 
-        return loss
+
+        # dice = torch.mean(dice, dim = 0)
+        # self.alpha = dice.mean()/dice
+        # self.alpha = self.alpha.view(1, -1, 1, 1)
+        self.alpha = 1
+
+        p_t = ce_loss.exp()
+
+        focal_weight = self.alpha * ((1-p_t)**self.gamma)
+
+        loss = ce_loss * focal_weight
+
+
+
+        return loss.sum()
 
 
 class PartialCrossEntropy(CrossEntropy):
