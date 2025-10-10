@@ -138,9 +138,9 @@ def runTraining(args):
 
     elif args.loss == 'focal':    
         if args.mode == "full":
-            loss_fn = FocalLoss(idk=list(range(K)))  # Supervise both background and foreground
+            loss_fn = FocalLoss(idk=list(range(K)), gamma = args.gamma)  # Supervise both background and foreground
         elif args.mode in ["partial"] and args.dataset == 'SEGTHOR':
-            loss_fn = FocalLoss(idk=[0, 1, 3, 4])  # Do not supervise the heart (class 2)
+            loss_fn = FocalLoss(idk=[0, 1, 3, 4], gamma = args.gamma)  # Do not supervise the heart (class 2)
         else:
             raise ValueError(args.mode, args.dataset)
 
@@ -255,6 +255,7 @@ def main():
                         help="Keep only a fraction (10 samples) of the datasets, "
                              "to test the logics around epochs and logging easily.")
     parser.add_argument('--loss', type=str, default="ce", help="Choose loss from: 'ce', 'focal'.")
+    parser.add_argument('--gamma', type=int, default=1.5, help="Int for setting focal loss gamma.")
 
     args = parser.parse_args()
 
