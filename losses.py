@@ -73,8 +73,9 @@ class FocalLoss():
 
         # dice = torch.mean(dice, dim = 0)
         # self.alpha = dice.mean()/dice
-        # self.alpha = self.alpha.view(1, -1, 1, 1)
-        self.alpha = 1
+        self.alpha = torch.asarray([0.75, 1, 1, 1, 1]) 
+        self.alpha = self.alpha.view(1, -1, 1, 1)
+        # self.alpha = 1
 
         p_t = ce_loss.exp()
 
