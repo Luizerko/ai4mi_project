@@ -255,7 +255,7 @@ def main():
                         help="Keep only a fraction (10 samples) of the datasets, "
                              "to test the logics around epochs and logging easily.")
     parser.add_argument('--loss', type=str, default="ce", help="Choose loss from: 'ce', 'focal'.")
-    parser.add_argument('--gamma', type=int, default=1.5, help="Int for setting focal loss gamma.")
+    parser.add_argument('--gamma', type=float, default=1.5, help="Int for setting focal loss gamma.")
 
     args = parser.parse_args()
 
