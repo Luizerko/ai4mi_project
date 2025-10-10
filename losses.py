@@ -53,7 +53,7 @@ class FocalLoss():
         # Self.idk is used to filter out some classes of the target mask. Use fancy indexing
         self.idk = kwargs['idk']
         self.alpha = [1,1,1,1,1] # TODO: find per class weights -> organ sizes?
-        self.gamma = 2
+        self.gamma = 1.5
         print(f"Initialized {self.__class__.__name__} with {kwargs}")
 
     def __call__(self, pred_softmax, weak_target, dice):
@@ -74,12 +74,12 @@ class FocalLoss():
         # dice = torch.mean(dice, dim = 0)
         # self.alpha = dice.mean()/dice
         # self.alpha = self.alpha.view(1, -1, 1, 1)
-        # self.alpha = 1
+        self.alpha = 1
 
-        # p_t = ce_loss.exp()
+        p_t = ce_loss.exp()
 
-        # focal_weight = self.alpha * ((1-p_t)**self.gamma)
-        focal_weight = torch.ones_like(ce_loss)
+        focal_weight = self.alpha * ((1-p_t)**self.gamma)
+        # focal_weight = torch.ones_like(ce_loss)
 
         loss = einsum("bk,bk->", ce_loss, focal_weight)
 
