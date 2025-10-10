@@ -68,7 +68,7 @@ class FocalLoss():
         mask = weak_target[:, self.idk, ...].float()
 
         ce_loss = - einsum("bkwh,bkwh->bk", mask, log_p)
-        ce_loss /= mask.sum() + 1e-10
+        # ce_loss /= mask.sum() + 1e-10
 
 
         # dice = torch.mean(dice, dim = 0)
