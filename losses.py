@@ -52,7 +52,7 @@ class FocalLoss():
     def __init__(self, **kwargs):
         # Self.idk is used to filter out some classes of the target mask. Use fancy indexing
         self.idk = kwargs['idk']
-        self.alpha = [1,1,1,1,1] # TODO: find per class weights -> organ sizes?
+        self.alpha = [kwargs['alpha'],1,1,1,1] # TODO: find per class weights -> organ sizes?
         self.gamma = kwargs['gamma']
         print(f"Initialized {self.__class__.__name__} with {kwargs}")
 
@@ -73,7 +73,7 @@ class FocalLoss():
 
         # dice = torch.mean(dice, dim = 0)
         # self.alpha = dice.mean()/dice
-        self.alpha = torch.asarray([0.75, 1, 1, 1, 1]).to(ce_loss.device) 
+        self.alpha = torch.asarray(self.alpha).to(ce_loss.device) 
         self.alpha = self.alpha.view(1, -1)
         # self.alpha = 1
 
