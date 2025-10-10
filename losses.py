@@ -71,14 +71,15 @@ class FocalLoss():
         ce_loss /= mask.sum() + 1e-10
 
 
-        dice = torch.mean(dice, dim = 0)
-        self.alpha = dice.mean()/dice
-        self.alpha = self.alpha.view(1, -1, 1, 1)
+        # dice = torch.mean(dice, dim = 0)
+        # self.alpha = dice.mean()/dice
+        # self.alpha = self.alpha.view(1, -1, 1, 1)
         # self.alpha = 1
 
-        p_t = ce_loss.exp()
+        # p_t = ce_loss.exp()
 
-        focal_weight = self.alpha * ((1-p_t)**self.gamma)
+        # focal_weight = self.alpha * ((1-p_t)**self.gamma)
+        focal_weight = torch.ones_like(ce_loss)
 
         loss = einsum("bk,bk->", ce_loss, focal_weight)
 
