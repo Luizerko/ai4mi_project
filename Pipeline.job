@@ -22,10 +22,10 @@ source /home/scur1611/ai4mi_project/ai4mi/bin/activate
 #PREPROCESSING - SLICING
 srun python -O slice_segthor_changes.py --source_dir data/segthor_fixed --dest_dir data/SEGTHOR_CLEAN_tmp --shape 256 256 --retain 10 -p -1
 mv data/SEGTHOR_CLEAN_tmp data/SEGTHOR_CLEAN
-srun python slice_filter.py --in_root data/SEGTHOR_CLEAN --out_root data/SEGTHOR_FILTER --stats_grp_root data/SEGTHOR_CLEAN/train/gt -grp_regex "(Patient_\d\d)_\d\d\d\d"
+# srun python slice_filter.py --in_root data/SEGTHOR_CLEAN --out_root data/SEGTHOR_FILTER --stats_grp_root data/SEGTHOR_CLEAN/train/gt -grp_regex "(Patient_\d\d)_\d\d\d\d"
 
 #MAIN WITH DATA AUGMENTATION + LOSS + REGULARIZATION (ARQUITECTURE CHANGES ARE LEFT)
-srun python -O main_changes.py --dataset SEGTHOR_FILTER --mode tv --loss focal --epochs 50 --dest RESULTS_COMPLETE --gpu --augment
+srun python -O main_changes.py --dataset SEGTHOR_CLEAN --mode tv --loss focal --epochs 50 --dest RESULTS_COMPLETE --gpu --augment 
 
 #PREPROCESSING (II)
 srun python slices_recover --dir RESULTS_COMPLETE/best_epoch/val --base_dir data/SEGTHOR_CLEAN/val/gt --dir_recover RESULTS_COMPLETE/best_epoch/val_complete
@@ -33,4 +33,5 @@ srun python slices_recover --dir RESULTS_COMPLETE/best_epoch/val --base_dir data
 #STITCHING
 #Prediction
 python stitch.py --data_folder RESULTS_COMPLETE/best_epoch/val_complete --dest_folder RESULTS_STITCHED/val/pred --num_classes 5 --grp_regex "(Patient_\d\d)_\d\d\d\d" --source_scan_pattern "data/segthor_train/train/{id_}/GT.nii.gz"
+
 #NINA PART IS LEFT 
