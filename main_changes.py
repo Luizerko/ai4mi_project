@@ -142,9 +142,10 @@ def runTraining(args):
 
     elif args.loss == 'focal':    
         if args.mode == "full":
-            loss_fn = FocalLoss(idk=list(range(K)), gamma = args.gamma)  # Supervise both background and foreground
+            # added alpha=args.alpha
+            loss_fn = FocalLoss(idk=list(range(K)), gamma=args.gamma, alpha=args.alpha)  # Supervise both background and foreground
         elif args.mode in ["partial"] and args.dataset == 'SEGTHOR':
-            loss_fn = FocalLoss(idk=[0, 1, 3, 4], gamma = args.gamma)  # Do not supervise the heart (class 2)
+            loss_fn = FocalLoss(idk=[0, 1, 3, 4], gamma=args.gamma, alpha=args.alpha)  # Do not supervise the heart (class 2)
         elif args.mode == "tv":
             loss_fn = FLWithTV(lam_tv=1e-3, num_classes=K)  # Full CE + TV on foreground
         else:

@@ -128,21 +128,17 @@ class CEWithTV:
 
         return loss
     
+# SOPHIE -- changed to forward FocalLoss
 class FLWithTV:
-    def __init__(self, lam_tv=1e-3, num_classes=5):
-        # Full CE over all classes
-        self.foc = FocalLoss(idk=list(range(num_classes)))
+    def __init__(self, lam_tv=1e-3, num_classes=5, alpha=1.0, gamma=0.0):
+        # forward alpha/gamma to FocalLoss
+        self.foc = FocalLoss(idk=list(range(num_classes)), alpha=alpha, gamma=gamma)
         self.lam_tv = lam_tv
         self.fg_classes = list(range(1, num_classes))  # exclude background
 
-    def __call__(self, pred_softmax, weak_target):
-        # 1) Standard full CE loss
-        loss = self.foc(pred_softmax, weak_target)
-
-        # 2) Add foreground TV regularization
+    def __call__(self, pred_softmax, weak_target, dice=None):  # accept dice
+        loss = self.foc(pred_softmax, weak_target, dice)
         if self.lam_tv > 0:
             tv_term = tv2d_foreground(pred_softmax, fg_classes=self.fg_classes)
             loss = loss + self.lam_tv * tv_term
-
         return loss
-
