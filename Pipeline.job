@@ -31,9 +31,9 @@ srun python -O main_changes.py --dataset SEGTHOR_CLEAN --mode tv --loss focal --
 # srun python slices_recover --dir RESULTS_COMPLETE/best_epoch/val --base_dir data/SEGTHOR_CLEAN/val/gt --dir_recover RESULTS_COMPLETE/best_epoch/val_complete
 
 #STITCHING
-#Prediction
+
 python stitch.py --data_folder RESULTS_COMPLETE/best_epoch/val_complete --dest_folder RESULTS_STITCHED/val/pred --num_classes 5 --grp_regex "(Patient_\d\d)_\d\d\d\d" --source_scan_pattern "data/segthor_train/train/{id_}/GT.nii.gz"
 
-#NINA PART IS LEFT 
+
 
 
