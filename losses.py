@@ -83,7 +83,6 @@ class FocalLoss():
         # focal_weight = torch.ones_like(ce_loss)
 
         loss = einsum("bk,bk->", ce_loss, focal_weight)
-        print(loss)
 
 
 
