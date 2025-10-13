@@ -39,216 +39,173 @@ from skimage.transform import resize
 from utils import map_, tqdm_
 import numpy as np
 import scipy.ndimage as ndi
+import cv2
 
-def _body_mask(vol_hu: np.ndarray) -> np.ndarray:
-    """Return a binary body mask: voxels above -500 HU, followed by morphological closing."""
-    m = (vol_hu > -500).astype(np.uint8)
-    return ndi.binary_closing(m, iterations=2).astype(np.uint8)
+#PREPROCESSING CHANGES
 
-def _lung_mask(vol_hu: np.ndarray) -> np.ndarray:
-    """Return a binary lung mask: voxels below -320 HU, with opening and hole filling."""
-    m = (vol_hu < -320).astype(np.uint8)
-    m = ndi.binary_opening(m, iterations=1).astype(np.uint8)
-    m = ndi.binary_fill_holes(m).astype(np.uint8)
-    return m
+#1. MEDIASTINUM MASKING
 
-def _mediastinum_mask(body: np.ndarray, lung: np.ndarray) -> np.ndarray:
-    """Return mediastinum ROI as body minus lung, with a light morphological opening."""
-    med = (body.astype(bool) & (~lung.astype(bool))).astype(np.uint8)
-    return ndi.binary_opening(med, iterations=1).astype(np.uint8)
+def body_mask(volume_original: np.ndarray) -> np.ndarray:  
+    body_mask = (volume_original > -500).astype(np.uint8) #We set the threshold to -500 to remove background
+    body_mask = ndi.binary_closing(body_mask, iterations=2).astype(np.uint8) #We apply binary closing to reduce background
+    return body_mask
 
-def dilate_by_mm(mask, spacing_xyz, margin_mm):
-    """Dilate a 3D boolean mask by an isotropic physical margin in millimeters."""
-    dz, dy, dx = spacing_xyz
-    dist = ndi.distance_transform_edt(~mask.astype(bool), sampling=(dz, dy, dx))
-    return (dist <= margin_mm)
+def lung_mask(volume_original: np.ndarray) -> np.ndarray:
+    mask_lungs = (volume_original < -320).astype(np.uint8) #We set the threshold to -320 to avoid possible lungs soft tissue
+    mask_lungs = ndi.binary_fill_holes(ndi.binary_opening(mask_lungs, iterations=1).astype(np.uint8)).astype(np.uint8) #We apply binary opening to include possible soft tissue within the mask
+    return mask_lungs
 
-def top_percentile_artifact_mask(vol_hu, roi_mask, p=99.97, hu_abs=1800,
-                                 min_area_px=20, dilate_mm_val=2.0,
-                                 spacing_xyz=(1.0, 1.0, 1.0)):
-    """
-    Detect very bright artifacts: threshold at max(percentile p inside ROI, absolute HU),
-    remove small components, then optionally dilate by a physical margin.
-    Returns uint8 binary mask.
-    """
-    hu = vol_hu.astype(np.float32)
-    roi = (roi_mask > 0)
-    thr_p = np.percentile(hu[roi], p) if roi.any() else np.percentile(hu, p)
-    cand = (hu >= max(thr_p, hu_abs))
-    lab, n = ndi.label(cand)
-    if n > 0:
-        sizes = ndi.sum(cand, lab, np.arange(1, n + 1))
-        keep = (np.where(sizes >= min_area_px)[0] + 1)
-        cand = np.isin(lab, keep)
+def mediastinum_mask(body_mask: np.ndarray, lung_mask: np.ndarray) -> np.ndarray:
+    mediastinum_mask = (body_mask.astype(bool) & (~lung_mask.astype(bool))).astype(np.uint8) #To include body and exclude lung within the mask
+    mediastinum_mask = ndi.binary_opening(mediastinum_mask, iterations=1).astype(np.uint8) #We apply opening to include more soft tissue inside the mediastinum_mask
+    return mediastinum_mask
+
+def dilate(mediastinum_mask, spacing, margin):
+    dz, dy, dx = spacing
+    dist = ndi.distance_transform_edt(~mediastinum_mask.astype(bool), sampling=(dz, dy, dx)) #Calculate the eucledian distance from every voxel outside the mediastinum mask to the rest of the voxels
+    dilated_mask = dist <= margin #Return the dilated_mask
+    return dilated_mask
+
+def apply_mask(volume: np.ndarray, mediastinum_mask: np.ndarray) -> np.ndarray: 
+    out = volume.copy()
+    out[mediastinum_mask == 0] = 0 #We set everything outside the mediastinum mask to 0
+    return out
+
+#2. SOFT TISSUE NORMALIZATION
+
+def normalize_soft_tissue(volume, mediastinum_mask, soft_tissue_window=(-150, 250), bone_thr=200):
+
+    volume = volume.astype(np.float32) #We set values to float32 to allow for accurate calculations
+    volume = np.clip(volume, soft_tissue_window[0], soft_tissue_window[1]) #1. Clipping to soft tissue window
+    mask_norm = mediastinum_mask > 0 
+    soft = mask_norm & (volume <= bone_thr) & (volume >= -300) #We make a soft tissue mask (inlcuding the mediastinum_mask and excluding bones and background) 
+    if soft.sum() < 100: #If the sum of the soft tissue mask is very low to avoid wrong normalization we set the soft mask tissue to the entire mediastinum 
+        soft = mask_norm if mask_norm.any() else np.ones_like(mask_norm, bool)
+    # 2. Z-score normalization
+    mu = volume[soft].mean()
+    sd = volume[soft].std() + 1e-6
+    z = (volume - mu) / sd
+    if soft.any():
+        zmin, zmax = np.percentile(z[soft], (2, 98)) # We set the zmin and zmax to the percentiles 2 and 98 to avoid extreme values
+    else:
+        zmin, zmax = z.min(), z.max()
+    
+    #3. Normalization
+    norm = ((np.clip(z, zmin, zmax) - zmin) / (zmax - zmin + 1e-6) * 255).round().astype(np.uint8) #We include 1e-6 terminus in the denominator to avoid 0 division error
+    return norm
+
+#4. NOISE AND ARTIFACTS REMOVAL
+
+def artifact_mask(volume, mediastinum_mask, p=99.97, upper_thr=1800, min_area_px=20, dilate_mm_val=2.0, spacing=(1.0, 1.0, 1.0)):
+    volume = volume.astype(np.float32)
+    mask_artifact = (mediastinum_mask > 0)
+    upper_value_inside_mask = np.percentile(volume[mask_artifact], p) if mask_artifact.any() else np.percentile(volume, p)
+    Art_surface = (volume >= max(upper_value_inside_mask, upper_thr)) #Mask with the possible artifact volume (maximun of 1800--very bright or the upper percentile)
+    lab, n = ndi.label(Art_surface)
+    if n > 0: #If there are high-intensity components 
+        sizes = ndi.sum(Art_surface, lab, np.arange(1, n + 1)) #We compute the area of those components
+        keep = (np.where(sizes >= min_area_px)[0] + 1) #We keep the components whose area is greater than 20 pixels (exclude minor artifacts)
+        Art_surface = np.isin(lab, keep)
     if dilate_mm_val > 0:
-        cand = dilate_by_mm(cand, spacing_xyz, dilate_mm_val)
-    return cand.astype(np.uint8)
+        art_surface = dilate(Art_surface, spacing, dilate_mm_val) #We dillate a little bit the artifact mask
+    return art_surface.astype(np.uint8)
 
-def replace_artifacts(vol_hu, art_mask, roi_mask=None, mode="roi_median"):
-    """
-    Replace artifact voxels either with air (-1000 HU) or with the per-slice median
-    inside the provided ROI (fallback to slice median if ROI is empty).
-    """
-    out = vol_hu.copy().astype(np.float32)
+def replace_artifacts(volume, art_mask, mediastinum_mask=None):
+    out = volume.copy().astype(np.float32)
     Z = out.shape[0]
     for z in range(Z):
         m_art = art_mask[z] > 0
         if not m_art.any():
-            continue
-        if roi_mask is not None and (roi_mask[z] > 0).any():
-            med = float(np.median(out[z][roi_mask[z] > 0]))
+            continue #If there are no artifacts, continue
+        if mediastinum_mask is not None and (mediastinum_mask[z] > 0).any(): 
+            median = float(np.median(out[z][mediastinum_mask[z] > 0])) #If mediastinum is not None 
         else:
-            med = float(np.median(out[z]))
-        out[z][m_art] = med
+            median = float(np.median(out[z]))
+        out[z][m_art] = median #We replace the bright artifacts with the median 
+    return out 
+
+def ct_artifacts(img: np.ndarray) -> np.ndarray:
+    img[:, 173:] = 0 #Set to 0 all the values from pixel 173 onwards
+    return img
+
+#3. CONTRAST ENHANCEMENT
+
+def compress_bone(volume_norm, volume_original, mediastinum_mask, bone_thr=200, alpha=0.6):
+    out = volume_norm.astype(np.float32).copy()
+    mask_meadistinum_bones = (volume_original > bone_thr) & (mediastinum_mask > 0) #We create a mask for the mediastinum bones (bones inside mediastinum mask)
+    if not mask_meadistinum_bones.any():
+        return volume_norm
+    med = float(np.median(volume_norm[mediastinum_mask > 0])) if (mediastinum_mask > 0).any() else 128.0 #Median of the mediastinum values
+    out[mask_meadistinum_bones] = alpha * out[mask_meadistinum_bones] + (1.0 - alpha) * med #We move the value of the meadistinum_bones towards the median
+    out=np.clip(out, 0, 255).astype(np.uint8)
     return out
 
-def normalize_soft_roi_u8(vol, roi_mask, soft_win=(-150, 250), bone_thr=200):
-    """
-    Robust uint8 normalization focused on soft tissue within ROI:
-    clip to window, z-score within soft-tissue subset, then percentile clamp [2,98] and scale to [0,255].
-    """
-    hu = vol.astype(np.float32)
-    hu = np.clip(hu, soft_win[0], soft_win[1])
-    roi = roi_mask > 0
-    soft = roi & (hu <= bone_thr) & (hu >= -300)
-    if soft.sum() < 100:
-        soft = roi if roi.any() else np.ones_like(roi, bool)
-    mu = hu[soft].mean()
-    sd = hu[soft].std() + 1e-6
-    z = (hu - mu) / sd
-    if soft.any():
-        zmin, zmax = np.percentile(z[soft], (2, 98))
-    else:
-        zmin, zmax = z.min(), z.max()
-    norm = ((np.clip(z, zmin, zmax) - zmin) / (zmax - zmin + 1e-6) * 255).round().astype(np.uint8)
-    return norm
+def find_trachea(volume_slices, mediastinum_mask_slices, air_thr=-800):
 
-def compress_bone(u8, hu, roi_mask, bone_thr=200, alpha=0.6):
-    """
-    Bone compression: blend high-HU voxels towards the ROI median in the uint8 image.
-    alpha controls the blend strength.
-    """
-    out = u8.astype(np.float32).copy()
-    m = (hu > bone_thr) & (roi_mask > 0)
-    if not m.any():
-        return u8
-    med = float(np.median(u8[roi_mask > 0])) if (roi_mask > 0).any() else 128.0
-    out[m] = alpha * out[m] + (1.0 - alpha) * med
-    return np.clip(out, 0, 255).astype(np.uint8)
-
-def trachea_mask_from_air(hu2d, med2d, air_thr=-800):
-    """
-    Estimate the trachea as the largest air component within the mediastinum,
-    favoring components near the midline.
-    """
-    air = (hu2d < air_thr) & (med2d > 0)
+    air = (volume_slices < air_thr) & (mediastinum_mask_slices > 0)
     if not air.any():
         return np.zeros_like(air, bool)
-    lab, n = ndi.label(air)
+    label, n = ndi.label(air) #We find elements of air inside the mediastinum
     if n == 0:
-        return np.zeros_like(air, bool)
+        return np.zeros_like(air, bool) 
     H, W = air.shape
-    xs = ndi.center_of_mass(np.ones_like(air, float), labels=lab, index=np.arange(1, n + 1))
+    xs = ndi.center_of_mass(np.ones_like(air, float), labels=label, index=np.arange(1, n + 1))
     midx = W / 2.0
-    areas = ndi.sum(air, lab, index=np.arange(1, n + 1))
+    areas = ndi.sum(air, label, index=np.arange(1, n + 1)) #We compute the sum of each elements within the air mask
     scores = []
     for i, ((cy, cx), a) in enumerate(zip(xs, areas)):
-        scores.append((a / (1.0 + abs(cx - midx)), i + 1))
-    _, best_label = max(scores, key=lambda t: t[0])
-    return lab == best_label
+        scores.append((a / (1.0 + abs(cx - midx)), i + 1)) #We favour the components which are close to the middle line of the mediastinum
+    _, best_label = max(scores, key=lambda t: t[0]) #We identify the best label via the maximum score
+    trachea = (label == best_label) #Trachea is the best label
+    return trachea
 
-def esophageal_band_from_trachea(trach2d, spacing_xy, r_min_mm=4.0, r_max_mm=25.0, posterior_only=True):
-    """
-    Create an annular band around the trachea based on Euclidean distance in mm.
-    """
-    if not trach2d.any():
-        return np.zeros_like(trach2d, bool)
-    dy, dx = spacing_xy
-    dist = ndi.distance_transform_edt(~trach2d.astype(bool), sampling=(dy, dx))
-    band = (dist >= r_min_mm) & (dist <= r_max_mm)
-    if posterior_only:
-        H, W = trach2d.shape
-        ys, xs = np.nonzero(trach2d)
-        cy = ys.mean() if ys.size else H / 2.0
-        post = np.zeros_like(band, bool)
-        post[int(cy):, :] = True
-        band = band & post
+def esophageal_band_from_trachea(trachea_slice, spacing, r_min_mm=4.0, r_max_mm=25.0):
+
+    if not trachea_slice.any(): 
+        return np.zeros_like(trachea_slice, bool) #If there are no trachea slices found return a zero mask
+    dy, dx = spacing
+    dist = ndi.distance_transform_edt(~trachea_slice.astype(bool), sampling=(dy, dx)) #We compute the eucledian distance fron the trachea to zero elements
+    band = (dist >= r_min_mm) & (dist <= r_max_mm) #We compute the band from 4mm to 25mm from trachea
+    #We identify the elements which are posterior to the trachea
+    H, W = trachea_slice.shape
+    ys, xs = np.nonzero(trachea_slice)
+    cy = ys.mean() if ys.size else H / 2.0
+    post = np.zeros_like(band, bool)
+    post[int(cy):, :] = True
+    band = band & post #Final band is 4mm to 25mm posterior to trachea
     return band
 
-def enhance_esophagus_slice(slice_, band_mask, feather_sigma_px=2.0,
-                            clahe_clip=2.0, clahe_tile=(8, 8),
-                            unsharp_sigma_px=1.0, unsharp_amount=0.7):
-    """
-    Apply CLAHE and unsharp masking only within the band mask, with soft blending (feathering).
-    """
-    import cv2
+def enhance_esophagus_slice(slice_, band_mask, feather_sigma_px=2.0, clahe_clip=2.0, clahe_tile=(8, 8), unsharp_sigma_px=1.0, unsharp_amount=0.7): 
     base = slice_.astype(np.uint8)
     clahe = cv2.createCLAHE(clipLimit=float(clahe_clip), tileGridSize=tuple(clahe_tile))
-    eq = clahe.apply(base)
-    blur = cv2.GaussianBlur(eq, ksize=(0, 0), sigmaX=float(unsharp_sigma_px))
-    sharp = cv2.addWeighted(eq, 1.0 + float(unsharp_amount), blur, -float(unsharp_amount), 0)
+    equalized = clahe.apply(base) #Apply CLAHE enhancement to base model 
+    blur = cv2.GaussianBlur(equalized, ksize=(0, 0), sigmaX=float(unsharp_sigma_px)) #Apply blurring to the equilized model
+    sharp = cv2.addWeighted(equalized, 1.0 + float(unsharp_amount), blur, -float(unsharp_amount), 0)
     if feather_sigma_px and feather_sigma_px > 0:
-        w = ndi.gaussian_filter(band_mask.astype(np.float32), sigma=float(feather_sigma_px))
+        w = ndi.gaussian_filter(band_mask.astype(np.float32), sigma=float(feather_sigma_px)) #Apply gaussian_filtering to 
         w = np.clip(w / (w.max() + 1e-6), 0, 1)
     else:
         w = band_mask.astype(np.float32)
     out = (1.0 - w) * base.astype(np.float32) + w * sharp.astype(np.float32)
-    return np.clip(out, 0, 255).astype(np.uint8)
+    out = np.clip(out, 0, 255).astype(np.uint8)
+    return out
 
 
-def enhance_esophagus(u8_vol, hu_vol, med_mask, spacing_xyz,
-                      r_min_mm=4.0, r_max_mm=25.0):
-    """
-    Slice-wise esophageal enhancement:
-    detect tracheal air within mediastinum, build a posterior annular band,
-    and apply local enhancement inside that band.
-    """
-    dz, dy, dx = spacing_xyz
-    out = u8_vol.copy()
-    for z in range(u8_vol.shape[0]):
+def enhance_esophagus(volume_norm, volume_original, med_mask, spacing, r_min_mm=4.0, r_max_mm=25.0):
+    dz, dy, dx = spacing
+    out = volume_norm.copy()
+    for z in range(volume_norm.shape[0]):
         roi = med_mask[z] > 0
         if not roi.any():
             continue
-        trach = trachea_mask_from_air(hu_vol[z], med_mask[z], air_thr=-800)
+        trach = find_trachea(volume_original[z], med_mask[z], air_thr=-800) #Find the trachea
         if not trach.any():
             continue
-        band = esophageal_band_from_trachea(trach, spacing_xy=(dy, dx),
-                                            r_min_mm=r_min_mm, r_max_mm=r_max_mm,
-                                            posterior_only=True)
+        band = esophageal_band_from_trachea(trach, spacing=(dy, dx), r_min_mm=r_min_mm, r_max_mm=r_max_mm) #Find the esophageal band posterior to trachea
         if not band.any():
             continue
-        
-        out[z] = enhance_esophagus_slice(out[z], band, feather_sigma_px=2.0,
-                                             clahe_clip=2.0, clahe_tile=(8, 8),
-                                             unsharp_sigma_px=1.0, unsharp_amount=0.7) 
-                     
+        out[z] = enhance_esophagus_slice(out[z], band, feather_sigma_px=2.0, clahe_clip=2.0, clahe_tile=(8, 8), unsharp_sigma_px=1.0, unsharp_amount=0.7) #Enhance the esophagus     
     return out
-
-def _apply_mask(u8_vol: np.ndarray, roi_mask: np.ndarray, feather, sigma_px=4, outside_value=0) -> np.ndarray:
-    """
-    Apply a binary mask to a uint8 volume. With feather=True, softly blend boundaries using a Gaussian.
-    """
-    if not feather:
-        out = u8_vol.copy()
-        out[roi_mask == 0] = outside_value
-        return out
-    m = roi_mask.astype(np.float32)
-    m = ndi.gaussian_filter(m, sigma=(0, sigma_px, sigma_px))
-    m = m / (m.max() + 1e-6)
-    out = (u8_vol.astype(np.float32) * m).clip(0, 255).astype(np.uint8)
-    return out
-
-def zero_from_col_173(img: np.ndarray) -> np.ndarray:
-    """
-    Zero out all columns x >= 173 for 2D uint8 grayscale or multi-channel images of width >= 174.
-    """
-    if img.shape[1] < 174:
-        return img
-    if img.ndim == 2:
-        img[:, 173:] = 0
-    else:
-        img[:, 173:, :] = 0
-    return img
 
 
 
@@ -295,16 +252,15 @@ def slice_patient(id_: str, dest_path: Path, source_path: Path, shape: tuple[int
 
     assert sanity_ct(ct, *ct.shape, *nib_obj.header.get_zooms())
 
-    body = _body_mask(ct)
-    lungs = _lung_mask(ct)
-    med = _mediastinum_mask(body, lungs)
+    body = body_mask(ct)
+    lungs = lung_mask(ct)
+    med = mediastinum_mask(body, lungs)
     dz,dy,dx = nib_obj.header.get_zooms()[2], nib_obj.header.get_zooms()[1], nib_obj.header.get_zooms()[0]
-    art = top_percentile_artifact_mask(ct, med, p=99.97, hu_abs=1800,
+    art = artifact_mask(ct, med, p=99.97, upper_thr=1800,
                                     min_area_px=20, dilate_mm_val=2.0,
-                                    spacing_xyz=(dz,dy,dx))
+                                    spacing=(dz,dy,dx))
 
-    # 2) Sustituye artefacto por valor neutro (mediana ROI por slice)
-    ct= replace_artifacts(ct, art, roi_mask=med, mode="roi_median")
+    ct= replace_artifacts(ct, art, mediastinum_mask=med)
 
     gt: np.ndarray
     if not test_mode:
@@ -316,14 +272,13 @@ def slice_patient(id_: str, dest_path: Path, source_path: Path, shape: tuple[int
     else:
         gt = np.zeros_like(ct, dtype=np.uint8)
 
-    norm_ct = normalize_soft_roi_u8(ct, med)
+    norm_ct = normalize_soft_tissue(ct, med)
     norm_ct = compress_bone(norm_ct, ct, med, bone_thr=200, alpha=0.6)
 
-# ---------- Realce dirigido del esófago ----------
-    norm_ct = enhance_esophagus(norm_ct, ct, med, spacing_xyz=(dz,dy,dx),
+    norm_ct = enhance_esophagus(norm_ct, ct, med, spacing=(dz,dy,dx),
                         r_min_mm=4.0, r_max_mm=25.0)
 
-    to_slice_ct = _apply_mask(norm_ct, med, feather=False, sigma_px=4, outside_value=0)
+    to_slice_ct = apply_mask(norm_ct, med)
 
     to_slice_gt = gt
 
@@ -331,7 +286,7 @@ def slice_patient(id_: str, dest_path: Path, source_path: Path, shape: tuple[int
     for idz in range(z):
         img_slice = resize_(to_slice_ct[:, :, idz], shape).astype(np.uint8)
         gt_slice = resize_(to_slice_gt[:, :, idz], shape, order=0).astype(np.uint8)
-        img_slice = zero_from_col_173(img_slice).astype(np.uint8)
+        img_slice = ct_artifacts(img_slice).astype(np.uint8)
         assert img_slice.shape == gt_slice.shape
         gt_slice *= 63
         assert gt_slice.dtype == np.uint8, gt_slice.dtype
