@@ -79,7 +79,7 @@ class FocalLoss():
 
         p_t = ce_loss.exp()
 
-        focal_weight = self.alpha * ((1-p_t)**self.gamma)
+        focal_weight = self.alpha #* ((1-p_t)**self.gamma)
         # focal_weight = torch.ones_like(ce_loss)
 
         loss = einsum("bk,bk->", ce_loss, focal_weight)
