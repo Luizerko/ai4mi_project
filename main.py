@@ -122,9 +122,9 @@ def setup(args) -> tuple[nn.Module, Any, Any, DataLoader, DataLoader, int]:
                             shuffle=False)
 
     # Add timestamp to avoid overwriting results
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-    args.dest = args.dest / f"run_{timestamp}"
-    args.dest.mkdir(parents=True, exist_ok=False)
+    #timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    #args.dest = args.dest / f"run_{timestamp}"
+    args.dest.mkdir(parents=True, exist_ok=True)
     print(f">>> Saving results to: {args.dest}")
 
     return (net, optimizer, device, train_loader, val_loader, K)
