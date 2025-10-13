@@ -94,40 +94,6 @@ def normalize_soft_tissue(volume, mediastinum_mask, soft_tissue_window=(-150, 25
     norm = ((np.clip(z, zmin, zmax) - zmin) / (zmax - zmin + 1e-6) * 255).round().astype(np.uint8) #We include 1e-6 terminus in the denominator to avoid 0 division error
     return norm
 
-#4. NOISE AND ARTIFACTS REMOVAL
-
-def artifact_mask(volume, mediastinum_mask, p=99.97, upper_thr=1800, min_area_px=20, dilate_mm_val=2.0, spacing=(1.0, 1.0, 1.0)):
-    volume = volume.astype(np.float32)
-    mask_artifact = (mediastinum_mask > 0)
-    upper_value_inside_mask = np.percentile(volume[mask_artifact], p) if mask_artifact.any() else np.percentile(volume, p)
-    Art_surface = (volume >= max(upper_value_inside_mask, upper_thr)) #Mask with the possible artifact volume (maximun of 1800--very bright or the upper percentile)
-    lab, n = ndi.label(Art_surface)
-    if n > 0: #If there are high-intensity components 
-        sizes = ndi.sum(Art_surface, lab, np.arange(1, n + 1)) #We compute the area of those components
-        keep = (np.where(sizes >= min_area_px)[0] + 1) #We keep the components whose area is greater than 20 pixels (exclude minor artifacts)
-        Art_surface = np.isin(lab, keep)
-    if dilate_mm_val > 0:
-        art_surface = dilate(Art_surface, spacing, dilate_mm_val) #We dillate a little bit the artifact mask
-    return art_surface.astype(np.uint8)
-
-def replace_artifacts(volume, art_mask, mediastinum_mask=None):
-    out = volume.copy().astype(np.float32)
-    Z = out.shape[0]
-    for z in range(Z):
-        m_art = art_mask[z] > 0
-        if not m_art.any():
-            continue #If there are no artifacts, continue
-        if mediastinum_mask is not None and (mediastinum_mask[z] > 0).any(): 
-            median = float(np.median(out[z][mediastinum_mask[z] > 0])) #If mediastinum is not None 
-        else:
-            median = float(np.median(out[z]))
-        out[z][m_art] = median #We replace the bright artifacts with the median 
-    return out 
-
-def ct_artifacts(img: np.ndarray) -> np.ndarray:
-    img[:, 173:] = 0 #Set to 0 all the values from pixel 173 onwards
-    return img
-
 #3. CONTRAST ENHANCEMENT
 
 def compress_bone(volume_norm, volume_original, mediastinum_mask, bone_thr=200, alpha=0.6):
@@ -178,11 +144,11 @@ def esophageal_band_from_trachea(trachea_slice, spacing, r_min_mm=4.0, r_max_mm=
 def enhance_esophagus_slice(slice_, band_mask, feather_sigma_px=2.0, clahe_clip=2.0, clahe_tile=(8, 8), unsharp_sigma_px=1.0, unsharp_amount=0.7): 
     base = slice_.astype(np.uint8)
     clahe = cv2.createCLAHE(clipLimit=float(clahe_clip), tileGridSize=tuple(clahe_tile))
-    equalized = clahe.apply(base) #Apply CLAHE enhancement to base model 
+    equalized = clahe.apply(base) #Apply CLAHE enhancement to base slices 
     blur = cv2.GaussianBlur(equalized, ksize=(0, 0), sigmaX=float(unsharp_sigma_px)) #Apply blurring to the equilized model
     sharp = cv2.addWeighted(equalized, 1.0 + float(unsharp_amount), blur, -float(unsharp_amount), 0)
     if feather_sigma_px and feather_sigma_px > 0:
-        w = ndi.gaussian_filter(band_mask.astype(np.float32), sigma=float(feather_sigma_px)) #Apply gaussian_filtering to 
+        w = ndi.gaussian_filter(band_mask.astype(np.float32), sigma=float(feather_sigma_px)) #Apply gaussian_filtering 
         w = np.clip(w / (w.max() + 1e-6), 0, 1)
     else:
         w = band_mask.astype(np.float32)
@@ -206,6 +172,42 @@ def enhance_esophagus(volume_norm, volume_original, med_mask, spacing, r_min_mm=
             continue
         out[z] = enhance_esophagus_slice(out[z], band, feather_sigma_px=2.0, clahe_clip=2.0, clahe_tile=(8, 8), unsharp_sigma_px=1.0, unsharp_amount=0.7) #Enhance the esophagus     
     return out
+
+#4. NOISE AND ARTIFACTS REMOVAL
+
+def artifact_mask(volume, mediastinum_mask, p=99.97, upper_thr=1800, min_area_px=20, dilate_mm_val=2.0, spacing=(1.0, 1.0, 1.0)):
+    volume = volume.astype(np.float32)
+    mask_artifact = (mediastinum_mask > 0)
+    upper_value_inside_mask = np.percentile(volume[mask_artifact], p) if mask_artifact.any() else np.percentile(volume, p)
+    Art_surface = (volume >= max(upper_value_inside_mask, upper_thr)) #Mask with the possible artifact volume (maximun of 1800--very bright or the upper percentile)
+    lab, n = ndi.label(Art_surface)
+    if n > 0: #If there are high-intensity components 
+        sizes = ndi.sum(Art_surface, lab, np.arange(1, n + 1)) #We compute the area of those components
+        keep = (np.where(sizes >= min_area_px)[0] + 1) #We keep the components whose area is greater than 20 pixels (exclude minor artifacts)
+        Art_surface = np.isin(lab, keep)
+    if dilate_mm_val > 0:
+        art_surface = dilate(Art_surface, spacing, dilate_mm_val) #We dillate a little bit the artifact mask
+    return art_surface.astype(np.uint8)
+
+def replace_artifacts(volume, art_mask, mediastinum_mask=None):
+    out = volume.copy().astype(np.float32)
+    Z = out.shape[0]
+    for z in range(Z):
+        m_art = art_mask[z] > 0
+        if not m_art.any():
+            continue #If there are no artifacts, continue
+        if mediastinum_mask is not None and (mediastinum_mask[z] > 0).any(): 
+            median = float(np.median(out[z][mediastinum_mask[z] > 0])) #If mediastinum is not None 
+        else:
+            median = float(np.median(out[z]))
+        out[z][m_art] = median #We replace the bright artifacts with the median 
+    return out 
+
+def ct_artifacts(img: np.ndarray) -> np.ndarray:
+    img[:, 173:] = 0 #Set to 0 all the values from pixel 173 onwards
+    return img
+
+
 
 
 
