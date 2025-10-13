@@ -1,5 +1,9 @@
 # AI for medical imaging — Fall 2025 group project
 
+## Notes from group 18
+
+We added `OpenCV` dependency, so you should run `pip install opencv-python` before testing our code. The script we ran for the experiments is `run_experiments.sh`. Please read the comments inside it for further details on each part and also to make sure you can replicate it if you end up having problems while running it.
+
 ## Project overview
 The project is based around the SegTHOR challenge data, which was kindly allowed by Caroline Petitjean (challenge organizer) to use for the course. The challenge was originally on the segmentation of different organs: heart, aorta, esophagus and trachea.
 

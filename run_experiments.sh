@@ -14,7 +14,7 @@ for i in $(seq 1 "$RUNS"); do
     --dataset SEGTHOR_CLEAN \
     --mode full \
     --loss ce \
-    --epoch 2 \
+    --epoch 25 \
     --dest "${OUT_DIR}/" \
     --gpu \
     --augment rotate brightness contrast
@@ -89,7 +89,7 @@ for i in $(seq 1 "$RUNS"); do
     --test
 done
 
-Post-processing pipeline
+# Post-processing pipeline
 echo "[6/8] Post-processing pipeline for arch=${ARCH}"
 for i in $(seq 1 "$RUNS"); do
   OUT_DIR="${BASE_DIR}/${ARCH}_training_output_${i}"
@@ -98,28 +98,37 @@ for i in $(seq 1 "$RUNS"); do
   python post_processing.py --predictions_path "${OUT_DIR}/stitches/test/pred" --dest_path "${BASE_DIR}/${ARCH}_training_output_${i}/stitches/test/pp_pred/" --mode full
 done
 
-# # Computing metrics per run
-# echo "[7/8] Computing metrics for arch=${ARCH}"
-# cd distorch/
-# for i in $(seq 1 "$RUNS"); do
-#   OUT_DIR="${BASE_DIR}/${ARCH}_training_output_${i}"
-#   echo "Metrics for run ${i}"
+############# IMPORTANT NOTE #################
+# IF THE METRICS COMPUTATION DON'T WORK,     #
+# PLEASE TRY TO RUN THIS OTHER SCRIPT BEFORE #
+# TO FIX A GT PATH PROBLEM WE HAD IN THE END.#
+# PLEASE FIX THE PATHS FOR YOUR OWN MACHINE  #
+# BEFOREHAND.                                #
+# python built_gt.py                         #
+##############################################
 
-#   python compute_metrics.py \
-#     --ref_folder "../${OUT_DIR}/stitches/val/gt/" \
-#     --pred_folder "../${OUT_DIR}/stitches/val/pred/" \
-#     --ref_extension ".nii.gz" \
-#     --pred_extension ".nii.gz" \
-#     -K 5 \
-#     --metrics 3d_hd95 3d_dice \
-#     --background_class 0 \
-#     --save_folder "../${OUT_DIR}/stitches/val/" \
-#     --overwrite
-# done
+# Computing metrics per run
+echo "[7/8] Computing metrics for arch=${ARCH}"
+cd distorch/
+for i in $(seq 1 "$RUNS"); do
+  OUT_DIR="${BASE_DIR}/${ARCH}_training_output_${i}"
+  echo "Metrics for run ${i}"
 
-# # Computing statistics for the metrics
-# echo "[8/8] Computing metrics average and standard deviation for arch=${ARCH}"
-# cd ../
-# python averaging_experiments.py --arch "${ARCH}"\
-#  --base_dir "${BASE_DIR}" \
-#  --metrics 3d_hd95 3d_dice
+  python compute_metrics.py \
+    --ref_folder "../${OUT_DIR}/stitches/val/gt/" \
+    --pred_folder "../${OUT_DIR}/stitches/val/pred/" \
+    --ref_extension ".nii.gz" \
+    --pred_extension ".nii.gz" \
+    -K 5 \
+    --metrics 3d_hd95 3d_dice \
+    --background_class 0 \
+    --save_folder "../${OUT_DIR}/stitches/val/" \
+    --overwrite
+done
+
+# Computing statistics for the metrics
+echo "[8/8] Computing metrics average and standard deviation for arch=${ARCH}"
+cd ../
+python averaging_experiments.py --arch "${ARCH}"\
+ --base_dir "${BASE_DIR}" \
+ --metrics 3d_hd95 3d_dice
