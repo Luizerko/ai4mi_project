@@ -138,9 +138,9 @@ def runTraining(args):
 
     elif args.loss == 'focal':    
         if args.mode == "full":
-            loss_fn = FocalLoss(idk=list(range(K)), gamma = args.gamma)  # Supervise both background and foreground
+            loss_fn = FocalLoss(idk=list(range(K)), gamma = args.gamma, alpha = args.alpha)  # Supervise both background and foreground
         elif args.mode in ["partial"] and args.dataset == 'SEGTHOR':
-            loss_fn = FocalLoss(idk=[0, 1, 3, 4], gamma = args.gamma)  # Do not supervise the heart (class 2)
+            loss_fn = FocalLoss(idk=[0, 1, 3, 4], gamma = args.gamma, alpha = args.alpha)  # Do not supervise the heart (class 2)
         else:
             raise ValueError(args.mode, args.dataset)
 
